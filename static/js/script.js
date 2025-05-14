@@ -81,8 +81,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function handleFiles(file) {
         // Check file size
-        if (file.size > 32 * 1024 * 1024) { // 32MB
-            alert('File size exceeds the maximum limit of 32MB');
+        if (file.size > 200 * 1024 * 1024) { // 200MB
+            alert('File size exceeds the maximum limit of 200MB');
             return;
         }
         

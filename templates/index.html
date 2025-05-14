@@ -1,0 +1,128 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Threat Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Threat Analyzer</h1>
+            <p>Scan files and URLs for potential security threats using VirusTotal integration</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" data-tab="file-tab">File Analysis</button>
+            <button class="tab-button" data-tab="url-tab">URL Analysis</button>
+            <button class="tab-button" data-tab="history-tab">Scan History</button>
+        </div>
+
+        <div class="tab-content">
+            <!-- File Analysis Tab -->
+            <div id="file-tab" class="tab-pane active">
+                <div class="upload-container">
+                    <form id="file-upload-form" enctype="multipart/form-data">
+                        <div class="upload-area" id="upload-area">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drag & Drop files here or <span class="browse-link">Browse</span></p>
+                            <p class="file-size-limit">Maximum file size: 32MB</p>
+                            <input type="file" id="file-input" hidden>
+                        </div>
+                        <div class="selected-file-container" style="display: none;">
+                            <p>Selected file: <span id="selected-filename"></span></p>
+                            <button type="button" id="change-file-btn">Change</button>
+                        </div>
+                        <button type="submit" id="file-submit-btn">Analyze File</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- URL Analysis Tab -->
+            <div id="url-tab" class="tab-pane">
+                <div class="url-container">
+                    <form id="url-form">
+                        <div class="url-input-group">
+                            <input type="url" id="url-input" placeholder="Enter a URL to analyze" required>
+                            <button type="submit">Analyze URL</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div id="history-tab" class="tab-pane">
+                <div class="history-container">
+                    <h2>Recent Scan History</h2>
+                    <div id="history-list">
+                        <p class="loading-text">Loading history...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="progress-container" style="display: none;">
+            <div class="progress-wrapper">
+                <div class="progress-spinner"></div>
+                <p>Analyzing. Please wait...</p>
+            </div>
+        </div>
+
+        <!-- Results Dashboard -->
+        <div id="results-dashboard" style="display: none;">
+            <div class="dashboard-header">
+                <h2>Analysis Results</h2>
+                <span class="close-results">&times;</span>
+            </div>
+            
+            <div class="dashboard-content">
+                <div class="score-section">
+                    <div class="score-gauge">
+                        <div class="gauge-label">Security Score</div>
+                        <div class="gauge-value" id="community-score">--</div>
+                        <div class="gauge-meter">
+                            <div class="gauge-fill" id="gauge-fill"></div>
+                        </div>
+                    </div>
+                    <div class="detection-stats">
+                        <div class="detection-label">Detection Ratio</div>
+                        <div class="detection-value" id="detection-ratio">--/--</div>
+                    </div>
+                </div>
+                
+                <div class="threat-categories">
+                    <h3>Threat Categories</h3>
+                    <div id="categories-container">
+                        <p>No threats detected</p>
+                    </div>
+                </div>
+                
+                <div class="analysis-details">
+                    <h3>Analysis Details</h3>
+                    <table>
+                        <tr><td>Resource</td><td id="resource-value">--</td></tr>
+                        <tr><td>First Submission</td><td id="first-seen">--</td></tr>
+                        <tr><td>Last Analysis</td><td id="scan-date">--</td></tr>
+                        <tr><td>Community Votes</td><td id="community-votes">--</td></tr>
+                    </table>
+                </div>
+                
+                <div class="verdict-section">
+                    <h3>Safety Verdict</h3>
+                    <p id="verdict-text">--</p>
+                </div>
+                
+                <div class="action-links">
+                    <a href="#" id="virustotal-link" target="_blank">View Complete Report on VirusTotal</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

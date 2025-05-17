@@ -496,3 +496,66 @@ header p {
         margin-bottom: 1.5rem;
     }
 }
+
+/* Add this to your existing CSS */
+.icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+}
+
+/* Update the gauge meter to be more visible */
+.gauge-meter {
+    width: 200px;
+    height: 12px;
+    background-color: #f1f1f1;
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 0 auto;
+}
+
+/* Update the category tags to include icons */
+.category-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background-color: var(--danger-color);
+    color: white;
+    border-radius: 20px;
+    margin: 0.25rem;
+    font-size: 0.9rem;
+}
+
+/* Update the verdict section */
+#verdict-text {
+    font-size: 1.1rem;
+    padding: 1rem;
+    background-color: rgba(52, 152, 219, 0.1);
+    border-radius: 8px;
+    border-left: 4px solid var(--accent-color);
+}
+
+/* Update the URL input group */
+.url-input-group {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    position: relative;
+}
+
+.url-input-group .icon {
+    position: absolute;
+    left: 1rem;
+    z-index: 1;
+    color: var(--light-text);
+}
+
+.url-input-group input {
+    flex: 1;
+    padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 1rem;
+}
+

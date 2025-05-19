@@ -118,7 +118,7 @@ def analyze_file():
             return jsonify({'success': False, 'error': 'File is too small to analyze'})
         
         if file_size > 32 * 1024 * 1024:
-            return jsonify({'success': False, 'error': 'File exceeds 32MB size limit'})
+            return jsonify({'success': False, 'error': 'File exceeds 200MB size limit'})
         
         file_hash = get_file_hash(file_data)
         params = {'apikey': VIRUSTOTAL_API_KEY, 'resource': file_hash}

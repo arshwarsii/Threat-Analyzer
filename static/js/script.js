@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Constants
-    const MIN_FILE_SIZE = 1; // Minimum 1 byte
-    const MAX_FILE_SIZE = 32 * 1024 * 1024; // 32MB
-    const MAX_ANALYSIS_ATTEMPTS = 10; // 10 attempts (5 minutes total)
-    const ANALYSIS_RETRY_DELAY = 30000; // 30 seconds
+    const MIN_FILE_SIZE = 1;
+    const MAX_FILE_SIZE = 200 * 1024 * 1024;
+    const MAX_ANALYSIS_ATTEMPTS = 10;
+    const ANALYSIS_RETRY_DELAY = 10000; // 10 seconds
 
     // Tab Navigation
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -13,11 +13,9 @@ document.addEventListener('DOMContentLoaded', function() {
         button.addEventListener('click', function() {
             const tabId = this.dataset.tab;
             
-            // Update active tab button
             tabButtons.forEach(btn => btn.classList.remove('active'));
             this.classList.add('active');
             
-            // Show the selected tab pane
             tabPanes.forEach(pane => pane.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
         });
@@ -84,7 +82,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function handleFiles(file) {
-        // Validate file size
         if (file.size < MIN_FILE_SIZE) {
             showError('File is too small to analyze (minimum 1 byte required)');
             resetFileInput();
@@ -97,13 +94,11 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Display selected file info
         selectedFilename.textContent = file.name;
         selectedFileContainer.style.display = 'flex';
         uploadArea.style.display = 'none';
     }
     
-    // Change file button
     changeFileBtn.addEventListener('click', resetFileInput);
     
     function resetFileInput() {
@@ -123,7 +118,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const file = fileInput.files[0];
         
-        // Revalidate in case something changed
         if (file.size < MIN_FILE_SIZE || file.size > MAX_FILE_SIZE) {
             showError('Invalid file size');
             resetFileInput();
@@ -146,112 +140,103 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        showProgressIndicator('Analyzing URL...');
+        analyzeUrl(url);
+    });
+    
+    function analyzeFile(formData, file, scanId = null, attempt = 1) {
+    showProgressIndicator(scanId ? 'Checking analysis progress...' : 'Starting analysis...');
+    
+    fetch('/analyze_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.status === 204) {
+            throw new Error('VirusTotal API is currently unavailable');
+        }
+        if (!response.ok) {
+            return response.json().then(errData => {
+                throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            hideProgressIndicator();
+            displayResults(data.result);
+        } 
+        else if (data.requires_polling) {
+            if (attempt >= MAX_ANALYSIS_ATTEMPTS) {
+                hideProgressIndicator();
+                showError('Analysis is taking longer than expected. Please try again later.');
+                resetFileInput();
+                return;
+            }
+            
+            updateProgressMessage(data.message);
+            
+            setTimeout(() => {
+                analyzeFile(formData, file, data.scan_id, attempt + 1);
+            }, ANALYSIS_RETRY_DELAY);
+        }
+        else {
+            hideProgressIndicator();
+            showError(data.error || 'Unknown error occurred');
+            resetFileInput();
+        }
+    })
+    .catch(error => {
+        hideProgressIndicator();
+        showError(error.message || 'Failed to analyze file');
+        resetFileInput();
+    });
+}
+    
+    // URL Analysis Function with Polling
+    function analyzeUrl(url, scanId = null, attempt = 1) {
+        showProgressIndicator(scanId ? 'Checking analysis progress...' : 'Submitting URL for analysis...');
         
         fetch('/analyze_url', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url: url })
+            body: JSON.stringify({ 
+                url: url,
+                scan_id: scanId
+            })
         })
         .then(response => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             return response.json();
         })
         .then(data => {
-            hideProgressIndicator();
             if (data.success) {
+                hideProgressIndicator();
                 displayResults(data.result);
-            } else {
-                showError(data.error || 'Unknown error occurred');
+            } 
+            else if (data.requires_polling) {
+                if (attempt >= MAX_ANALYSIS_ATTEMPTS) {
+                    hideProgressIndicator();
+                    showError('Analysis is taking longer than expected. Please try again later.');
+                    return;
+                }
+                
+                updateProgressMessage(data.message);
+                
+                setTimeout(() => {
+                    analyzeUrl(url, data.scan_id, attempt + 1);
+                }, ANALYSIS_RETRY_DELAY);
+            }
+            else {
+                hideProgressIndicator();
+                showError(data.error || data.message || 'Unknown error occurred');
             }
         })
         .catch(error => {
             hideProgressIndicator();
             showError('Failed to analyze URL: ' + error.message);
-        });
-    });
-    
-    // File Analysis Function
-    function analyzeFile(formData, file) {
-        showProgressIndicator('Starting analysis...');
-        
-        fetch('/analyze_file', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                hideProgressIndicator();
-                displayResults(data.result);
-            } else {
-                if (data.error.includes('submitted for analysis')) {
-                    hideProgressIndicator();
-                    if (confirm(`${data.error}\n\nWould you like to monitor the analysis progress?`)) {
-                        showProgressIndicator('Waiting for analysis to complete...');
-                        monitorAnalysis(file);
-                    }
-                } else {
-                    hideProgressIndicator();
-                    showError(data.error || 'Unknown error occurred');
-                    resetFileInput();
-                }
-            }
-        })
-        .catch(error => {
-            hideProgressIndicator();
-            showError('Failed to analyze file: ' + error.message);
-            resetFileInput();
-        });
-    }
-    
-    // Analysis Monitoring Function
-    function monitorAnalysis(file, attempt = 1) {
-        if (attempt > MAX_ANALYSIS_ATTEMPTS) {
-            hideProgressIndicator();
-            showError('Analysis is taking longer than expected. Please try again later.');
-            resetFileInput();
-            return;
-        }
-        
-        updateProgressMessage(`Waiting for analysis (attempt ${attempt}/${MAX_ANALYSIS_ATTEMPTS})...`);
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        fetch('/analyze_file', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                hideProgressIndicator();
-                displayResults(data.result);
-            } else {
-                if (data.error.includes('submitted for analysis')) {
-                    setTimeout(() => {
-                        monitorAnalysis(file, attempt + 1);
-                    }, ANALYSIS_RETRY_DELAY);
-                } else {
-                    hideProgressIndicator();
-                    showError(data.error || 'Analysis failed');
-                    resetFileInput();
-                }
-            }
-        })
-        .catch(error => {
-            hideProgressIndicator();
-            showError('Monitoring failed: ' + error.message);
-            resetFileInput();
         });
     }
     
@@ -279,22 +264,18 @@ document.addEventListener('DOMContentLoaded', function() {
     function displayResults(result) {
         const dashboard = document.getElementById('results-dashboard');
         
-        // Fill in the data
         document.getElementById('community-score').textContent = result.community_score;
         document.getElementById('detection-ratio').textContent = `${result.positives}/${result.total}`;
         document.getElementById('resource-value').textContent = truncateString(result.resource, 50);
         document.getElementById('first-seen').textContent = result.first_seen || 'N/A';
         document.getElementById('scan-date').textContent = result.scan_date || 'N/A';
         
-        // Community votes
         const votes = result.community_votes || {};
         document.getElementById('community-votes').textContent = 
             `👍 ${votes.harmless || 0} | 👎 ${votes.malicious || 0}`;
         
-        // Verdict
         document.getElementById('verdict-text').textContent = result.verdict;
         
-        // VirusTotal link
         const vtLink = document.getElementById('virustotal-link');
         vtLink.href = result.permalink || '#';
         if (!result.permalink) {
@@ -303,11 +284,9 @@ document.addEventListener('DOMContentLoaded', function() {
             vtLink.style.display = 'inline';
         }
         
-        // Fill the gauge
         const gaugeFill = document.getElementById('gauge-fill');
         gaugeFill.style.width = `${result.community_score}%`;
         
-        // Set color based on score
         if (result.community_score >= 90) {
             gaugeFill.style.backgroundColor = 'var(--success-color)';
         } else if (result.community_score >= 70) {
@@ -316,7 +295,6 @@ document.addEventListener('DOMContentLoaded', function() {
             gaugeFill.style.backgroundColor = 'var(--danger-color)';
         }
         
-        // Display threat categories
         const categoriesContainer = document.getElementById('categories-container');
         if (result.threat_categories && result.threat_categories.length > 0) {
             categoriesContainer.innerHTML = '';
@@ -324,7 +302,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tag = document.createElement('span');
                 tag.className = `category-tag ${category}`;
                 
-                // Add appropriate icon for each category
                 let iconName = 'alert-triangle';
                 if (category === 'malware') iconName = 'bug';
                 if (category === 'phishing') iconName = 'fish';
@@ -340,10 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
             lucide.createIcons();
         }
         
-        // Show dashboard
         dashboard.style.display = 'block';
-        
-        // Scroll to dashboard
         dashboard.scrollIntoView({ behavior: 'smooth' });
     }
     

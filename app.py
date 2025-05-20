@@ -102,122 +102,197 @@ def analyze_file():
             'error': 'API rate limit reached (4 requests/minute). Please try again later.'
         })
 
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': 'No file uploaded'})
-    
-    file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'success': False, 'error': 'No file selected'})
-    
-    try:
-        file_data = file.read()
-        file_size = len(file_data)
+    # Handle initial file submission
+    if 'file' in request.files:
+        file = request.files['file']
         
-        if file_size < 1:
-            return jsonify({'success': False, 'error': 'File is too small to analyze'})
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'})
         
-        if file_size > 32 * 1024 * 1024:
-            return jsonify({'success': False, 'error': 'File exceeds 32MB size limit'})
-        
-        file_hash = get_file_hash(file_data)
-        params = {'apikey': VIRUSTOTAL_API_KEY, 'resource': file_hash}
-        response = requests.get(f"{API_URL}/file/report", params=params)
-        
-        # Handle 204 No Content response
-        if response.status_code == 204:
-            return jsonify({
-                'success': False,
-                'error': 'VirusTotal API is currently unavailable. Please try again later.'
-            })
+        try:
+            file_data = file.read()
+            file_size = len(file_data)
             
-        if response.status_code != 200:
-            return jsonify({
-                'success': False,
-                'error': f"API Error: {response.status_code} - {response.text}"
-            })
+            if file_size < 1:
+                return jsonify({'success': False, 'error': 'File is too small to analyze'})
             
-        report = response.json()
-        
-        if report.get('response_code') == 0:
-            file.seek(0)
-            files = {'file': (file.filename, file.stream, file.mimetype)}
-            headers = {"Accept-Encoding": "gzip, deflate"}
+            if file_size > 200 * 1024 * 1024:
+                return jsonify({'success': False, 'error': 'File exceeds 32MB size limit'})
             
-            try:
-                submit_response = requests.post(
-                    f"{API_URL}/file/scan",
-                    files=files,
-                    params={'apikey': VIRUSTOTAL_API_KEY},
-                    headers=headers,
-                    timeout=30
-                )
-                
-                if submit_response.status_code == 204:
-                    return jsonify({
-                        'success': False,
-                        'error': 'VirusTotal API is currently unavailable. Please try again later.'
-                    })
-                    
-                if submit_response.status_code != 200:
-                    return jsonify({
-                        'success': False,
-                        'error': f"Submission API Error: {submit_response.status_code}"
-                    })
-                    
-                submit_data = submit_response.json()
-                if submit_data.get('response_code') == 1:
-                    return jsonify({
-                        'success': False,
-                        'scan_id': submit_data.get('scan_id'),
-                        'message': 'File submitted for analysis. Please wait...',
-                        'requires_polling': True
-                    })
-                else:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Submission failed: ' + submit_data.get('verbose_msg', 'Unknown error')
-                    })
-                    
-            except requests.exceptions.RequestException as e:
+            file_hash = get_file_hash(file_data)
+            params = {'apikey': VIRUSTOTAL_API_KEY, 'resource': file_hash}
+            response = requests.get(f"{API_URL}/file/report", params=params)
+            
+            if response.status_code == 204:
                 return jsonify({
                     'success': False,
-                    'error': f"Connection error: {str(e)}"
+                    'error': 'VirusTotal API is currently unavailable. Please try again later.'
                 })
-        
-        if not report.get('scans'):
+                
+            if response.status_code != 200:
+                return jsonify({
+                    'success': False,
+                    'error': f"API Error: {response.status_code} - {response.text}"
+                })
+                
+            report = response.json()
+            response_code = report.get('response_code')
+
+            if response_code == 0:
+                # File not in dataset, submit it
+                file.seek(0)
+                files = {'file': (file.filename, file.stream, file.mimetype)}
+                headers = {"Accept-Encoding": "gzip, deflate"}
+                
+                try:
+                    submit_response = requests.post(
+                        f"{API_URL}/file/scan",
+                        files=files,
+                        params={'apikey': VIRUSTOTAL_API_KEY},
+                        headers=headers,
+                        timeout=30
+                    )
+                    
+                    if submit_response.status_code == 204:
+                        return jsonify({
+                            'success': False,
+                            'error': 'VirusTotal API is currently unavailable. Please try again later.'
+                        })
+                        
+                    if submit_response.status_code != 200:
+                        return jsonify({
+                            'success': False,
+                            'error': f"Submission API Error: {submit_response.status_code}"
+                        })
+                        
+                    submit_data = submit_response.json()
+                    if submit_data.get('response_code') == 1:
+                        return jsonify({
+                            'success': False,
+                            'scan_id': submit_data.get('scan_id'),
+                            'message': 'File submitted for analysis. Please wait...',
+                            'requires_polling': True
+                        })
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Submission failed: ' + submit_data.get('verbose_msg', 'Unknown error')
+                        })
+                        
+                except requests.exceptions.RequestException as e:
+                    return jsonify({
+                        'success': False,
+                        'error': f"Connection error: {str(e)}"
+                    })
+            
+            elif response_code == -2:
+                # Analysis in progress
+                return jsonify({
+                    'success': False,
+                    'scan_id': report.get('scan_id'),
+                    'message': 'Analysis in progress. Please wait...',
+                    'requires_polling': True
+                })
+            
+            elif response_code == 1:
+                # Analysis complete
+                verdict = generate_verdict(report)
+                
+                return jsonify({
+                    'success': True,
+                    'result': {
+                        'resource': file_hash,
+                        'scan_date': report.get('scan_date'),
+                        'positives': report.get('positives', 0),
+                        'total': report.get('total', 0),
+                        'permalink': report.get('permalink', ''),
+                        'scan_id': report.get('scan_id', ''),
+                        'community_score': calculate_community_score(report),
+                        'first_seen': report.get('first_seen', 'N/A'),
+                        'community_votes': extract_community_votes(report),
+                        'threat_categories': extract_threat_categories(report),
+                        'verdict': verdict
+                    }
+                })
+            
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Unexpected response code from VirusTotal'
+                })
+                
+        except Exception as e:
             return jsonify({
                 'success': False,
-                'scan_id': report.get('scan_id'),
-                'message': 'Analysis in progress. Please wait...',
-                'requires_polling': True
+                'error': f"Unexpected error: {str(e)}"
             })
-            
-        verdict = generate_verdict(report)
-        
-        return jsonify({
-            'success': True,
-            'result': {
-                'resource': file_hash,
-                'scan_date': report.get('scan_date'),
-                'positives': report.get('positives', 0),
-                'total': report.get('total', 0),
-                'permalink': report.get('permalink', ''),
-                'scan_id': report.get('scan_id', ''),
-                'community_score': calculate_community_score(report),
-                'first_seen': report.get('first_seen', 'N/A'),
-                'community_votes': extract_community_votes(report),
-                'threat_categories': extract_threat_categories(report),
-                'verdict': verdict
-            }
-        })
-        
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': f"Unexpected error: {str(e)}"
-        })
     
+    # Handle polling with scan_id
+    elif 'scan_id' in request.form:
+        scan_id = request.form['scan_id']
+        params = {'apikey': VIRUSTOTAL_API_KEY, 'resource': scan_id}
+        try:
+            response = requests.get(f"{API_URL}/file/report", params=params)
+            
+            if response.status_code == 204:
+                return jsonify({
+                    'success': False,
+                    'error': 'VirusTotal API is currently unavailable. Please try again later.'
+                })
+                
+            if response.status_code != 200:
+                return jsonify({
+                    'success': False,
+                    'error': f"API Error: {response.status_code} - {response.text}"
+                })
+                
+            report = response.json()
+            response_code = report.get('response_code')
+            
+            if response_code == 1:
+                verdict = generate_verdict(report)
+                return jsonify({
+                    'success': True,
+                    'result': {
+                        'resource': report.get('resource', scan_id),
+                        'scan_date': report.get('scan_date', 'N/A'),
+                        'positives': report.get('positives', 0),
+                        'total': report.get('total', 0),
+                        'permalink': report.get('permalink', ''),
+                        'scan_id': scan_id,
+                        'community_score': calculate_community_score(report),
+                        'first_seen': report.get('first_seen', 'N/A'),
+                        'community_votes': extract_community_votes(report),
+                        'threat_categories': extract_threat_categories(report),
+                        'verdict': verdict
+                    }
+                })
+            
+            elif response_code == -2:
+                return jsonify({
+                    'success': False,
+                    'scan_id': scan_id,
+                    'message': 'Analysis in progress. Please wait...',
+                    'requires_polling': True
+                })
+            
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid scan_id or analysis failed'
+                })
+                
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f"Polling error: {str(e)}"
+            })
+    
+    return jsonify({
+        'success': False,
+        'error': 'No file or scan_id provided'
+    })
+
 @app.route('/analyze_url', methods=['POST'])
 def analyze_url():
     if not check_api_quota():

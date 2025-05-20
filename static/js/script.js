@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const MIN_FILE_SIZE = 1;
     const MAX_FILE_SIZE = 200 * 1024 * 1024;
     const MAX_ANALYSIS_ATTEMPTS = 10;
-    const ANALYSIS_RETRY_DELAY = 10000; // 10 seconds
+    const ANALYSIS_RETRY_DELAY = 60000; // 60 seconds
 
     // Tab Navigation
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -144,54 +144,65 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     function analyzeFile(formData, file, scanId = null, attempt = 1) {
-    showProgressIndicator(scanId ? 'Checking analysis progress...' : 'Starting analysis...');
-    
-    fetch('/analyze_file', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (response.status === 204) {
-            throw new Error('VirusTotal API is currently unavailable');
+        showProgressIndicator(scanId ? 'Checking analysis progress...' : 'Starting analysis...');
+        
+        const fetchOptions = {
+            method: 'POST'
+        };
+        
+        if (scanId) {
+            // Polling request with scan_id
+            const pollFormData = new FormData();
+            pollFormData.append('scan_id', scanId);
+            fetchOptions.body = pollFormData;
+        } else {
+            // Initial submission with file
+            fetchOptions.body = formData;
         }
-        if (!response.ok) {
-            return response.json().then(errData => {
-                throw new Error(errData.error || `HTTP error! status: ${response.status}`);
-            });
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            hideProgressIndicator();
-            displayResults(data.result);
-        } 
-        else if (data.requires_polling) {
-            if (attempt >= MAX_ANALYSIS_ATTEMPTS) {
-                hideProgressIndicator();
-                showError('Analysis is taking longer than expected. Please try again later.');
-                resetFileInput();
-                return;
+        
+        fetch('/analyze_file', fetchOptions)
+        .then(response => {
+            if (response.status === 204) {
+                throw new Error('VirusTotal API is currently unavailable');
             }
-            
-            updateProgressMessage(data.message);
-            
-            setTimeout(() => {
-                analyzeFile(formData, file, data.scan_id, attempt + 1);
-            }, ANALYSIS_RETRY_DELAY);
-        }
-        else {
+            if (!response.ok) {
+                return response.json().then(errData => {
+                    throw new Error(errData.error || `HTTP error! status: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                hideProgressIndicator();
+                displayResults(data.result);
+            } 
+            else if (data.requires_polling) {
+                if (attempt >= MAX_ANALYSIS_ATTEMPTS) {
+                    hideProgressIndicator();
+                    showError('Analysis is taking longer than expected. Please try again later.');
+                    resetFileInput();
+                    return;
+                }
+                
+                updateProgressMessage(data.message);
+                
+                setTimeout(() => {
+                    analyzeFile(null, file, data.scan_id, attempt + 1);
+                }, ANALYSIS_RETRY_DELAY);
+            }
+            else {
+                hideProgressIndicator();
+                showError(data.error || 'Unknown error occurred');
+                resetFileInput();
+            }
+        })
+        .catch(error => {
             hideProgressIndicator();
-            showError(data.error || 'Unknown error occurred');
+            showError(error.message || 'Failed to analyze file');
             resetFileInput();
-        }
-    })
-    .catch(error => {
-        hideProgressIndicator();
-        showError(error.message || 'Failed to analyze file');
-        resetFileInput();
-    });
-}
+        });
+    }
     
     // URL Analysis Function with Polling
     function analyzeUrl(url, scanId = null, attempt = 1) {

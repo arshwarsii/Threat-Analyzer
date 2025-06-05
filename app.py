@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 # VirusTotal API Configuration
-VIRUSTOTAL_API_KEY = "a8237004a0fa0c6be08a85ddfa214167ed8c80b7c8331c2624fc7e71a7f3df2d"
+VIRUSTOTAL_API_KEY = "Your API"
 API_URL = "https://www.virustotal.com/vtapi/v2"
 
 # Helper Functions
